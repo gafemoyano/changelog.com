@@ -2,12 +2,29 @@
   <h1 class="ui dividing header">
     <%= link @episode.podcast.name, to: admin_podcast_episode_path(@conn, :index, @episode.podcast.slug) %>
     &raquo;
-    <%= @episode.slug %>
+    <%= link @episode.slug, to: admin_podcast_episode_path(@conn, :edit, @podcast.slug, @episode.slug) %>
+    <%= if @episode.published do %>
+      <%= link "(View)",
+        to: episode_path(@conn, :show, @podcast.slug, @episode.slug),
+        class: "view",
+        rel: "external" %>
+    <% else %>
+      <%= link "(Preview)",
+        to: episode_path(@conn, :preview, @podcast.slug, @episode.slug),
+        class: "view",
+        rel: "external" %>
+    <% end %>
     <div class="sub header"><%= @episode.title %></div>
   </h1>
 </div>
 
 <div class="ui basic segment">
+  <h2 class="ui dividing header">Embed Code</h2>
+  <div class="ui fluid action input">
+    <input type="text" value="<%= embed_code(@episode) %>">
+    <button class="ui basic icon clipboard button"><i class="clipboard icon"></i></button>
+  </div>
+
 <%= if Enum.any?(@stats) do %>
   <h2 class="ui dividing header">Demographics</h2>
 

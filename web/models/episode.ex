@@ -53,7 +53,17 @@ defmodule Changelog.Episode do
   end
 
   def published(query \\ __MODULE__) do
-    from e in query, where: e.published == true, where: not(is_nil(e.audio_file))
+    from e in query,
+      where: e.published == true,
+      where: not(is_nil(e.audio_file)),
+      where: e.published_at <= ^Timex.now
+  end
+
+  def scheduled(query \\ __MODULE__) do
+    from e in query,
+      where: e.published == true,
+      where: not(is_nil(e.audio_file)),
+      where: e.published_at > ^Timex.now
   end
 
   def unpublished(query \\ __MODULE__) do
@@ -88,18 +98,23 @@ defmodule Changelog.Episode do
     from e in query, limit: ^count
   end
 
+  def is_public(episode, as_of \\ Timex.now) do
+    episode.published && episode.published_at <= as_of
+  end
+
   def changeset(episode, params \\ %{}) do
     episode
     |> cast(params, @required_fields, @optional_fields)
     |> cast_attachments(params, ~w(audio_file))
     |> validate_format(:slug, Regexp.slug, message: Regexp.slug_message)
     |> validate_featured_has_highlight
+    |> validate_published_has_published_at
     |> unique_constraint(:slug, name: :episodes_slug_podcast_id_index)
     |> cast_assoc(:episode_hosts)
     |> cast_assoc(:episode_guests)
     |> cast_assoc(:episode_sponsors)
     |> cast_assoc(:episode_channels)
-    |> derive_bytes_and_duration(params)
+    |> derive_bytes_and_duration
   end
 
   def preload_all(episode) do
@@ -160,17 +175,13 @@ defmodule Changelog.Episode do
     |> Repo.update!
   end
 
-  defp derive_bytes_and_duration(changeset, params) do
+  defp derive_bytes_and_duration(changeset) do
     if new_audio_file = get_change(changeset, :audio_file) do
-      # adding the album art to the mp3 file throws off ffmpeg's duration
-      # detection (bitrate * filesize). So, we use the raw_file to get accurate
-      # duration and the tagged_file to get accurate bytes
-      raw_file = params["audio_file"].path
       tagged_file = Changelog.EpisodeView.audio_local_path(%{changeset.data | audio_file: new_audio_file})
 
       case File.stat(tagged_file) do
         {:ok, stats} ->
-          seconds = extract_duration_seconds(raw_file)
+          seconds = extract_duration_seconds(tagged_file)
           change(changeset, bytes: stats.size, duration: seconds)
         {:error, _} -> changeset
       end
@@ -195,6 +206,17 @@ defmodule Changelog.Episode do
 
     if featured && is_nil(highlight) do
       add_error(changeset, :highlight, "can't be blank when featured")
+    else
+      changeset
+    end
+  end
+
+  defp validate_published_has_published_at(changeset) do
+    published = get_field(changeset, :published)
+    published_at = get_field(changeset, :published_at)
+
+    if published && is_nil(published_at) do
+      add_error(changeset, :published_at, "can't be blank when published")
     else
       changeset
     end
